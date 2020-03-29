@@ -9,11 +9,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Repository;
 
 import javax.annotation.PostConstruct;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.logging.Logger;
+
+import javax.cache.Cache;
+import javax.cache.CacheException;
+import javax.cache.CacheFactory;
+import javax.cache.CacheManager;
 
 @Repository
 public class UserRepository {
@@ -37,20 +39,20 @@ public class UserRepository {
     @PostConstruct
     public void init(){
         User adminUser;
-        Optional<User> optAdminUser = this.getByEmail("matilde@siecola.com.br");
+        Optional<User> optAdminUser = this.getByEmail("matilde1@siecola.com.br");
         try {
             if (optAdminUser.isPresent()) {
                 adminUser = optAdminUser.get();
                 if (!adminUser.getRole().equals("ROLE_ADMIN")) {
                     adminUser.setRole("ROLE_ADMIN");
-                    this.updateUser(adminUser, "matilde@siecola.com.br");
+                    this.updateUser(adminUser, "matilde1@siecola.com.br");
                 }
             } else {
                 adminUser = new User();
                 adminUser.setRole("ROLE_ADMIN");
                 adminUser.setEnabled(true);
                 adminUser.setPassword("matilde");
-                adminUser.setEmail("matilde@siecola.com.br");
+                adminUser.setEmail("matilde1@siecola.com.br");
                 this.saveUser(adminUser);
             }
         } catch (UserAlreadyExistsException | UserNotFoundException e) {
@@ -66,6 +68,7 @@ public class UserRepository {
             Key userKey = KeyFactory.createKey(USER_KIND, USER_KEY);
             Entity userEntity = new Entity(USER_KIND, userKey);
 
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
             userToEntity (user, userEntity);
 
             datastore.put(userEntity);
@@ -173,10 +176,44 @@ public class UserRepository {
         }
     }
 
+    public void updateUserLogin(User user) {
+        boolean canUseCache = true;
+        boolean saveOnCache = true;
+
+        Cache cache;
+        try {
+            CacheFactory cacheFactory = CacheManager.getInstance().getCacheFactory();
+            cache = cacheFactory.createCache(Collections.emptyMap());
+
+            if (cache.containsKey(user.getEmail())) {
+                Date lastLogin = (Date)cache.get(user.getEmail());
+                if ((Calendar.getInstance().getTime().getTime() - lastLogin.getTime()) < 30000) {
+                    saveOnCache = false;
+                }
+            }
+
+            if (saveOnCache) {
+                cache.put(user.getEmail(), (Date)Calendar.getInstance().getTime());
+                canUseCache = false;
+            }
+        } catch (CacheException e) {
+            canUseCache = false;
+        }
+
+        if (!canUseCache) {
+            user.setLastLogin((Date) Calendar.getInstance().getTime());
+            try {
+                this.updateUser(user, user.getEmail());
+            } catch (UserAlreadyExistsException | UserNotFoundException e) {
+                log.severe("Falha ao atualizar último login do usuário");
+            }
+        }
+    }
+
     private void userToEntity (User user, Entity userEntity) {
         userEntity.setProperty(PROPERTY_ID, user.getId());
         userEntity.setProperty(PROPERTY_EMAIL, user.getEmail());
-        userEntity.setProperty(PROPERTY_PASSWORD, passwordEncoder.encode(user.getPassword()));
+        userEntity.setProperty(PROPERTY_PASSWORD, user.getPassword());
         userEntity.setProperty(PROPERTY_FCM_REG_ID, user.getFcmRegId());
         userEntity.setProperty(PROPERTY_LAST_LOGIN, user.getLastLogin());
         userEntity.setProperty(PROPERTY_LAST_FCM_REGISTER,

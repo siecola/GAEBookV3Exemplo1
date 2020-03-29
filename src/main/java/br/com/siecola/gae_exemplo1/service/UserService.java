@@ -21,6 +21,7 @@ public class UserService implements UserDetailsService {
         Optional<User> optUser =
                 userRepository.getByEmail(email);
         if (optUser.isPresent()) {
+            userRepository.updateUserLogin(optUser.get());
             return optUser.get();
         } else {
             throw new UsernameNotFoundException("Usuário não encontrado");
