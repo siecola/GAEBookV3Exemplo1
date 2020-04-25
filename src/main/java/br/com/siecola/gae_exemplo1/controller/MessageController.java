@@ -69,7 +69,7 @@ public class MessageController {
                     Message message = Message.builder()
                             .putData("product", objectMapper.writeValueAsString(product))
                             .setFcmOptions(FcmOptions.builder()
-                                    .setAnalyticsLabel("")
+                                    .setAnalyticsLabel("label_1")
                                     .build())
                             .setToken(registrationToken)
                             .build();
